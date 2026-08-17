@@ -1,0 +1,32 @@
+# Local agent / assistant folders (never pushed)
+.claude/
+historic/
+
+# Build output
+build/
+cmake-build-*/
+out/
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Makefile
+cmake_install.cmake
+compile_commands.json
+generated/
+
+# Object / binary files
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.exe
+cleanerfirmware
+
+# Editor / OS cruft
+.DS_Store
+.vscode/
+.idea/
+*.swp

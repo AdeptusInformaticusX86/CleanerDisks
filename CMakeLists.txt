@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CleanerFirmware VERSION 1.0.0 LANGUAGES CXX)
+project(CleanerFirmware VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,9 +19,17 @@ endif()
 
 message(STATUS "Building for platform: ${PLATFORM_NAME}")
 
+# Generate version header from project version (single source of truth)
+configure_file(
+    ${CMAKE_SOURCE_DIR}/include/core/version.hpp.in
+    ${CMAKE_BINARY_DIR}/generated/core/version.hpp
+    @ONLY
+)
+
 # Include directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/generated
 )
 
 # Source files common to all platforms

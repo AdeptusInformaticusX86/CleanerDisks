@@ -1,6 +1,7 @@
 #include "cli/cli.hpp"
 #include "core/file_operations.hpp"
 #include "core/disk_operations.hpp"
+#include "core/version.hpp"
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
@@ -44,7 +45,7 @@ void CLI::print_help() {
 }
 
 void CLI::print_version() {
-    std::cout << "CleanerFirmware version 1.0.0\n";
+    std::cout << "CleanerFirmware version " << cleaner::kVersion << "\n";
     std::cout << "Built for platform: ";
 #ifdef PLATFORM_WINDOWS
     std::cout << "Windows\n";
