@@ -1,6 +1,7 @@
 #ifdef PLATFORM_MACOS
 
 #include "core/disk_operations.hpp"
+#include "core/process_exec.hpp"
 #include <sys/param.h>
 #include <sys/mount.h>
 #include <sys/disk.h>
@@ -136,31 +137,33 @@ platform::ResultCode format_disk_impl(
     const FormatOptions& options,
     ProgressCallback progress
 ) {
-    // macOS formatting should use diskutil command
-    std::string command = "diskutil eraseDisk ";
+    // macOS formatting should use diskutil command. Build an explicit argv
+    // (rather than a shell string) so device_path/label can never be
+    // interpreted as shell metacharacters, regardless of their contents.
+    std::vector<std::string> args = {"diskutil", "eraseDisk"};
 
     switch (options.filesystem) {
         case FilesystemType::APFS:
-            command += "APFS ";
+            args.push_back("APFS");
             break;
         case FilesystemType::HFS_PLUS:
-            command += "JHFS+ ";
+            args.push_back("JHFS+");
             break;
         case FilesystemType::FAT32:
-            command += "FAT32 ";
+            args.push_back("FAT32");
             break;
         case FilesystemType::EXFAT:
-            command += "ExFAT ";
+            args.push_back("ExFAT");
             break;
         default:
-            command += "APFS ";
+            args.push_back("APFS");
             break;
     }
 
-    command += (options.label.empty() ? "Untitled" : options.label) + " ";
-    command += device_path;
+    args.push_back(options.label.empty() ? "Untitled" : options.label);
+    args.push_back(device_path);
 
-    int ret = system(command.c_str());
+    int ret = process::run_command(args);
     if (ret != 0) {
         return platform::ResultCode::ERROR_IO_FAILURE;
     }

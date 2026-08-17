@@ -4,6 +4,7 @@
 #include <fstream>
 #include <random>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <filesystem>
 

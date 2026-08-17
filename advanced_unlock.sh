@@ -14,14 +14,14 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-DEVICE=$1
-DEVICE_BASE=$(echo $DEVICE | sed 's/[0-9]*$//')
+DEVICE="$1"
+DEVICE_BASE=$(echo "$DEVICE" | sed 's/[0-9]*$//')
 
 echo "=== Advanced Unlock Methods for $DEVICE ==="
 echo
 echo "WARNING: These methods may cause data loss!"
 echo "Press Enter to continue or Ctrl+C to cancel..."
-read
+read -r
 
 # Check if sg3_utils is installed
 if ! command -v sg_scan &> /dev/null; then
@@ -34,10 +34,10 @@ echo "=== Method 1: SCSI Mode Page (Write Protect) ==="
 if command -v sg_wr_mode &> /dev/null; then
     echo "Attempting to clear write-protect via SCSI mode page..."
     # Try to disable write-protect using mode page
-    sg_wr_mode --page=0 --mask=0,0,0,0x80 --clear=0,0,0,0x80 $DEVICE 2>&1
+    sg_wr_mode --page=0 --mask=0,0,0,0x80 --clear=0,0,0,0x80 "$DEVICE" 2>&1
 
     # Verify
-    RO=$(blockdev --getro $DEVICE)
+    RO=$(blockdev --getro "$DEVICE")
     if [ "$RO" = "0" ]; then
         echo "✅ SUCCESS via SCSI mode page!"
         exit 0
@@ -51,14 +51,14 @@ echo
 echo "=== Method 2: SCSI Start/Stop Unit ==="
 if command -v sg_start &> /dev/null; then
     echo "Stopping device..."
-    sg_start --stop $DEVICE 2>&1
+    sg_start --stop "$DEVICE" 2>&1
     sleep 2
     echo "Starting device..."
-    sg_start --start $DEVICE 2>&1
+    sg_start --start "$DEVICE" 2>&1
     sleep 2
 
     # Verify
-    RO=$(blockdev --getro $DEVICE)
+    RO=$(blockdev --getro "$DEVICE")
     if [ "$RO" = "0" ]; then
         echo "✅ SUCCESS via Start/Stop!"
         exit 0
@@ -71,23 +71,23 @@ echo
 # Method 3: USB Mass Storage reset via sysfs
 echo "=== Method 3: USB Mass Storage Reset ==="
 # Find the USB device path
-USB_DEV=$(udevadm info --query=path --name=$DEVICE | sed 's|/block/.*||')
+USB_DEV=$(udevadm info --query=path --name="$DEVICE" | sed 's|/block/.*||')
 if [ -n "$USB_DEV" ]; then
-    SCSI_DEV=$(echo $USB_DEV | grep -o "[0-9]*:[0-9]*:[0-9]*:[0-9]*")
+    SCSI_DEV=$(echo "$USB_DEV" | grep -o "[0-9]*:[0-9]*:[0-9]*:[0-9]*")
     if [ -n "$SCSI_DEV" ]; then
         echo "Deleting SCSI device..."
-        echo 1 > /sys/block/$(basename $DEVICE_BASE)/device/delete 2>/dev/null
+        echo 1 > "/sys/block/$(basename "$DEVICE_BASE")/device/delete" 2>/dev/null
         sleep 2
 
         # Rescan SCSI bus
-        HOST=$(echo $SCSI_DEV | cut -d: -f1)
+        HOST=$(echo "$SCSI_DEV" | cut -d: -f1)
         echo "Rescanning SCSI host $HOST..."
-        echo "- - -" > /sys/class/scsi_host/host$HOST/scan 2>/dev/null
+        echo "- - -" > "/sys/class/scsi_host/host$HOST/scan" 2>/dev/null
         sleep 3
 
         # Check if device is back
         if [ -b "$DEVICE" ]; then
-            RO=$(blockdev --getro $DEVICE)
+            RO=$(blockdev --getro "$DEVICE")
             if [ "$RO" = "0" ]; then
                 echo "✅ SUCCESS via SCSI rescan!"
                 exit 0
@@ -104,26 +104,26 @@ echo
 
 # Method 4: Try to remove and re-add the device via USB
 echo "=== Method 4: USB Unbind/Rebind ==="
-USB_PATH=$(udevadm info --query=path --name=$DEVICE)
-USB_DRIVER_PATH=$(dirname $USB_PATH | sed 's|/block.*||')
+USB_PATH=$(udevadm info --query=path --name="$DEVICE")
+USB_DRIVER_PATH=$(dirname "$USB_PATH" | sed 's|/block.*||')
 
 if [ -d "/sys$USB_DRIVER_PATH" ]; then
-    USB_DEVICE=$(basename $USB_DRIVER_PATH)
+    USB_DEVICE=$(basename "$USB_DRIVER_PATH")
     DRIVER_PATH="/sys$USB_DRIVER_PATH/driver"
 
     if [ -d "$DRIVER_PATH" ]; then
-        DRIVER=$(basename $(readlink -f $DRIVER_PATH))
+        DRIVER=$(basename "$(readlink -f "$DRIVER_PATH")")
         echo "Unbinding from driver: $DRIVER"
-        echo "$USB_DEVICE" > /sys/bus/usb/drivers/$DRIVER/unbind 2>/dev/null
+        echo "$USB_DEVICE" > "/sys/bus/usb/drivers/$DRIVER/unbind" 2>/dev/null
         sleep 2
 
         echo "Rebinding to driver: $DRIVER"
-        echo "$USB_DEVICE" > /sys/bus/usb/drivers/$DRIVER/bind 2>/dev/null
+        echo "$USB_DEVICE" > "/sys/bus/usb/drivers/$DRIVER/bind" 2>/dev/null
         sleep 3
 
         # Check if it worked
         if [ -b "$DEVICE" ]; then
-            RO=$(blockdev --getro $DEVICE)
+            RO=$(blockdev --getro "$DEVICE")
             if [ "$RO" = "0" ]; then
                 echo "✅ SUCCESS via USB rebind!"
                 exit 0
@@ -137,11 +137,11 @@ echo
 
 # Method 5: Direct attribute manipulation
 echo "=== Method 5: Direct Sysfs Attribute ==="
-if [ -f "/sys/block/$(basename $DEVICE_BASE)/ro" ]; then
+if [ -f "/sys/block/$(basename "$DEVICE_BASE")/ro" ]; then
     echo "Attempting to write directly to sysfs ro attribute..."
-    echo 0 > /sys/block/$(basename $DEVICE_BASE)/ro 2>&1
+    echo 0 > "/sys/block/$(basename "$DEVICE_BASE")/ro" 2>&1
 
-    RO=$(cat /sys/block/$(basename $DEVICE_BASE)/ro)
+    RO=$(cat "/sys/block/$(basename "$DEVICE_BASE")/ro")
     if [ "$RO" = "0" ]; then
         echo "✅ SUCCESS via sysfs!"
         exit 0
@@ -153,15 +153,21 @@ echo
 
 # Final check
 echo "=== Final Status ==="
-RO=$(blockdev --getro $DEVICE 2>/dev/null || echo "1")
+RO=$(blockdev --getro "$DEVICE" 2>/dev/null || echo "1")
 if [ "$RO" = "0" ]; then
     echo "✅ Device is now unlocked!"
     echo
-    echo "Testing write capability..."
-    if dd if=/dev/zero of=$DEVICE bs=512 count=1 conv=notrunc 2>/dev/null; then
-        echo "✅ Write test successful!"
+    echo "Testing write capability will overwrite the first sector of $DEVICE."
+    read -r -p "Proceed with the write test on $DEVICE? (yes/no): " WRITE_TEST_CONFIRM
+    if [ "$WRITE_TEST_CONFIRM" = "yes" ]; then
+        echo "Testing write capability..."
+        if dd if=/dev/zero of="$DEVICE" bs=512 count=1 conv=notrunc 2>/dev/null; then
+            echo "✅ Write test successful!"
+        else
+            echo "❌ Write test failed - device may still be protected"
+        fi
     else
-        echo "❌ Write test failed - device may still be protected"
+        echo "Write test skipped."
     fi
 else
     echo "❌ All advanced methods failed"

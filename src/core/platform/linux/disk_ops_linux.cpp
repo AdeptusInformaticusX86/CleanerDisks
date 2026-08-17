@@ -1,4 +1,5 @@
 #include "core/disk_operations.hpp"
+#include "core/process_exec.hpp"
 #include <fstream>
 #include <sstream>
 #include <random>
@@ -249,8 +250,7 @@ platform::ResultCode unlock_disk_impl(const std::string& device_path) {
     }
 
     // Method 2: Try using hdparm command
-    std::string cmd = "hdparm -r0 " + device_path + " >/dev/null 2>&1";
-    if (system(cmd.c_str()) == 0) {
+    if (process::run_command({"hdparm", "-r0", device_path}, /*discard_output=*/true) == 0) {
         // Verify it worked
         fd = open(device_path.c_str(), O_RDONLY);
         if (fd >= 0) {
@@ -264,8 +264,7 @@ platform::ResultCode unlock_disk_impl(const std::string& device_path) {
     }
 
     // Method 3: Try blockdev --setrw
-    cmd = "blockdev --setrw " + device_path + " >/dev/null 2>&1";
-    if (system(cmd.c_str()) == 0) {
+    if (process::run_command({"blockdev", "--setrw", device_path}, /*discard_output=*/true) == 0) {
         // Verify it worked
         fd = open(device_path.c_str(), O_RDONLY);
         if (fd >= 0) {
@@ -278,14 +277,37 @@ platform::ResultCode unlock_disk_impl(const std::string& device_path) {
         }
     }
 
-    // Method 4: Try USB reset
-    std::string usb_reset_cmd = "udevadm info --query=path --name=" + device_path +
-                                " | sed 's|/block/.*||' | while read path; do " +
-                                "if [ -f \"/sys$path/authorized\" ]; then " +
-                                "echo 0 > /sys$path/authorized; sleep 1; " +
-                                "echo 1 > /sys$path/authorized; sleep 1; " +
-                                "fi; done 2>/dev/null";
-    system(usb_reset_cmd.c_str());
+    // Method 4: Try USB reset by toggling the device's sysfs "authorized"
+    // attribute directly (no shell pipeline, no injection surface).
+    std::string udev_output;
+    if (process::run_command_capture({"udevadm", "info", "--query=path", "--name=" + device_path}, udev_output) == 0) {
+        while (!udev_output.empty() && (udev_output.back() == '\n' || udev_output.back() == '\r')) {
+            udev_output.pop_back();
+        }
+
+        auto block_pos = udev_output.find("/block/");
+        if (block_pos != std::string::npos) {
+            std::string authorized_path = "/sys" + udev_output.substr(0, block_pos) + "/authorized";
+            std::ifstream check_authorized(authorized_path);
+            if (check_authorized.is_open()) {
+                check_authorized.close();
+
+                std::ofstream deauthorize(authorized_path);
+                if (deauthorize.is_open()) {
+                    deauthorize << "0";
+                    deauthorize.close();
+                    sleep(1);
+
+                    std::ofstream reauthorize(authorized_path);
+                    if (reauthorize.is_open()) {
+                        reauthorize << "1";
+                        reauthorize.close();
+                        sleep(1);
+                    }
+                }
+            }
+        }
+    }
 
     // Final verification
     fd = open(device_path.c_str(), O_RDONLY);
@@ -311,42 +333,39 @@ platform::ResultCode format_disk_impl(
     ProgressCallback progress
 ) {
     // Determine filesystem command
-    std::string command;
-    std::string fs_type;
+    std::vector<std::string> args;
 
     switch (options.filesystem) {
         case FilesystemType::EXT4:
-            command = "mkfs.ext4 -F ";
-            fs_type = "ext4";
+            args = {"mkfs.ext4", "-F"};
             break;
         case FilesystemType::NTFS:
-            command = "mkfs.ntfs -f ";
-            fs_type = "ntfs";
+            args = {"mkfs.ntfs", "-f"};
             break;
         case FilesystemType::FAT32:
-            command = "mkfs.vfat -F 32 ";
-            fs_type = "fat32";
+            args = {"mkfs.vfat", "-F", "32"};
             break;
         case FilesystemType::EXFAT:
-            command = "mkfs.exfat ";
-            fs_type = "exfat";
+            args = {"mkfs.exfat"};
             break;
         default:
-            command = "mkfs.ext4 -F ";
-            fs_type = "ext4";
+            args = {"mkfs.ext4", "-F"};
             break;
     }
 
     if (!options.label.empty()) {
-        command += "-L \"" + options.label + "\" ";
+        args.push_back("-L");
+        args.push_back(options.label);
     }
 
-    command += device_path;
+    args.push_back(device_path);
 
-    // Execute format command
-    int ret = system(command.c_str());
+    // Execute format command. Passing an explicit argv (rather than a
+    // shell string) means device_path/label can never be interpreted as
+    // shell metacharacters, regardless of their contents.
+    int ret = process::run_command(args);
     if (ret != 0) {
-        if (WEXITSTATUS(ret) == 127) {
+        if (ret == 127) {
             return platform::ResultCode::ERROR_NOT_SUPPORTED;
         }
         return platform::ResultCode::ERROR_IO_FAILURE;

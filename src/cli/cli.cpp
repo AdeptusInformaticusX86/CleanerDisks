@@ -22,7 +22,8 @@ void CLI::print_help() {
     std::cout << "  delete-dir <path> [method]      - Securely delete a directory\n";
     std::cout << "  list-disks                      - List all available disks\n";
     std::cout << "  disk-info <device>              - Show disk information\n";
-    std::cout << "  format <device> [filesystem]    - Format a disk\n";
+    std::cout << "  format <device> [filesystem] [--force] - Format a disk\n";
+    std::cout << "                                     (--force required if the disk is mounted)\n";
     std::cout << "  unlock <device>                 - Unlock write-protected disk\n";
     std::cout << "  wipe <device> [passes]          - Securely wipe a disk\n";
     std::cout << "  help                            - Show this help\n";
@@ -193,16 +194,16 @@ int CLI::handle_format_disk() {
 
     std::string device = argv_[2];
     disk_ops::FormatOptions options;
-    options.force = true;
 
-    if (argv_.size() >= 4) {
-        std::string fs_str = argv_[3];
-        if (fs_str == "ext4") options.filesystem = disk_ops::FilesystemType::EXT4;
-        else if (fs_str == "ntfs") options.filesystem = disk_ops::FilesystemType::NTFS;
-        else if (fs_str == "fat32") options.filesystem = disk_ops::FilesystemType::FAT32;
-        else if (fs_str == "exfat") options.filesystem = disk_ops::FilesystemType::EXFAT;
-        else if (fs_str == "apfs") options.filesystem = disk_ops::FilesystemType::APFS;
-        else if (fs_str == "hfsplus") options.filesystem = disk_ops::FilesystemType::HFS_PLUS;
+    for (size_t i = 3; i < argv_.size(); ++i) {
+        const std::string& arg = argv_[i];
+        if (arg == "--force") options.force = true;
+        else if (arg == "ext4") options.filesystem = disk_ops::FilesystemType::EXT4;
+        else if (arg == "ntfs") options.filesystem = disk_ops::FilesystemType::NTFS;
+        else if (arg == "fat32") options.filesystem = disk_ops::FilesystemType::FAT32;
+        else if (arg == "exfat") options.filesystem = disk_ops::FilesystemType::EXFAT;
+        else if (arg == "apfs") options.filesystem = disk_ops::FilesystemType::APFS;
+        else if (arg == "hfsplus") options.filesystem = disk_ops::FilesystemType::HFS_PLUS;
     }
 
     std::cout << "WARNING: This will erase all data on " << device << "\n";
